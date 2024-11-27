@@ -342,64 +342,359 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// 获取元素
-const recordTab = document.getElementById('recordTab');
-const viewTab = document.getElementById('viewTab');
-const weeklyStatsTab = document.getElementById('weeklyStatsTab');
-const monthlyStatsTab = document.getElementById('monthlyStatsTab');
+// 页面加载时设置默认日期
+window.onload = function() {
+    let today = new Date();
+    let dd = String(today.getDate()).padStart(2, '0');
+    let mm = String(today.getMonth() + 1).padStart(2, '0'); 
+    let yyyy = today.getFullYear();
+    today = yyyy + '-' + mm + '-' + dd;
+    document.getElementById('date').value = today;
 
-// 切换显示记录界面
-recordTab.addEventListener('click', function () {
-    switchTab('record');
+    updateTable();
+    updateWeeklyStats(); // 更新周统计
+    updateMonthlyStats(); // 更新月统计
+    updateCharts(); // 更新折线图
+};
+
+// 选项卡切换
+document.getElementById('recordTab').addEventListener('click', function() {
+    showSection('recordSection');
+});
+document.getElementById('viewTab').addEventListener('click', function() {
+    showSection('viewSection');
+});
+document.getElementById('weeklyStatsTab').addEventListener('click', function() {
+    showSection('weeklyStatsSection');
+    updateWeeklyStats();
+});
+document.getElementById('monthlyStatsTab').addEventListener('click', function() {
+    showSection('monthlyStatsSection');
+    updateMonthlyStats();
 });
 
-// 切换查看界面
-viewTab.addEventListener('click', function () {
-    switchTab('view');
-    updatePerformanceTable(); // 更新数据表
-    updateViewChart(); // 更新图表
-});
+function showSection(sectionId) {
+    let sections = ['recordSection', 'viewSection', 'weeklyStatsSection', 'monthlyStatsSection'];
+    sections.forEach(function(section) {
+        document.getElementById(section).style.display = section === sectionId ? 'block' : 'none';
+    });
 
-// 切换周统计界面
-weeklyStatsTab.addEventListener('click', function () {
-    switchTab('weeklyStats');
-    updateWeeklyChart(); // 更新周统计图表
-});
+    let buttons = document.querySelectorAll('.sidebar button');
+    buttons.forEach(function(button) {
+        button.classList.remove('active');
+    });
+    document.getElementById(sectionId.replace('Section', 'Tab')).classList.add('active');
+}
 
-// 切换月统计界面
-monthlyStatsTab.addEventListener('click', function () {
-    switchTab('monthlyStats');
-    updateMonthlyChart(); // 更新月统计图表
-});
+// 上传记录
+document.getElementById('uploadRecord').addEventListener('click', function() {
+    let date = document.getElementById('date').value;
+    let target = document.getElementById('target').value;
+    let actual = document.getElementById('actual').value;
 
-// 切换选项卡
-function switchTab(tab) {
-    // 隐藏所有部分
-    document.getElementById('recordSection').style.display = 'none';
-    document.getElementById('viewSection').style.display = 'none';
-    document.getElementById('weeklyStatsSection').style.display = 'none';
-    document.getElementById('monthlyStatsSection').style.display = 'none';
-
-    // 清除所有按钮的active类
-    recordTab.classList.remove('active');
-    viewTab.classList.remove('active');
-    weeklyStatsTab.classList.remove('active');
-    monthlyStatsTab.classList.remove('active');
-
-    // 显示当前选中的部分
-    if (tab === 'record') {
-        document.getElementById('recordSection').style.display = 'block';
-        recordTab.classList.add('active');
-    } else if (tab === 'view') {
-        document.getElementById('viewSection').style.display = 'block';
-        viewTab.classList.add('active');
-    } else if (tab === 'weeklyStats') {
-        document.getElementById('weeklyStatsSection').style.display = 'block';
-        weeklyStatsTab.classList.add('active');
-    } else if (tab === 'monthlyStats') {
-        document.getElementById('monthlyStatsSection').style.display = 'block';
-        monthlyStatsTab.classList.add('active');
+    // 上传记录的逻辑
+    if (date && target && actual) {
+        // 假设此处进行数据库存储等操作
+        let record = { date, target, actual };
+        let existingRecord = getRecordByDate(date);
+        if (existingRecord) {
+            document.getElementById('failureMessage').style.display = 'block';
+            return;
+        }
+        saveRecord(record);
+        updateTable();
+        document.getElementById('successMessage').style.display = 'block';
     }
+});
+
+function saveRecord(record) {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    records.push(record);
+    localStorage.setItem('performanceRecords', JSON.stringify(records));
+}
+
+function getRecordByDate(date) {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    return records.find(record => record.date === date);
+}
+
+function updateTable() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let tableBody = document.getElementById('performanceTable');
+    tableBody.innerHTML = '';
+    records.forEach(function(record) {
+        let row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${record.date}</td>
+            <td>${getMonth(record.date)}</td>
+            <td>${getWeek(record.date)}</td>
+            <td>${record.target}</td>
+            <td>${record.actual}</td>
+            <td>${record.target - record.actual}</td>
+            <td><button class="delete-btn" onclick="deleteRecord('${record.date}')">删除</button></td>
+        `;
+        tableBody.appendChild(row);
+    });
+    updateCharts();
+}
+
+
+function deleteRecord(date) {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    records = records.filter(record => record.date !== date);
+    localStorage.setItem('performanceRecords', JSON.stringify(records));
+    updateTable();
+    document.getElementById('deleteMessage').style.display = 'block';
+}
+
+function updateWeeklyStats() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let weeklyStats = {};
+    records.forEach(function(record) {
+        let week = getWeek(record.date);
+        if (!weeklyStats[week]) {
+            weeklyStats[week] = { target: 0, actual: 0 };
+        }
+        weeklyStats[week].target += parseFloat(record.target);
+        weeklyStats[week].actual += parseFloat(record.actual);
+    });
+
+    let tableBody = document.getElementById('weeklyStatsTable');
+    tableBody.innerHTML = '';
+    for (let week in weeklyStats) {
+        let stats = weeklyStats[week];
+        let row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${week}</td>
+            <td>${stats.target}</td>
+            <td>${stats.actual}</td>
+            <td>${stats.target - stats.actual}</td>
+        `;
+
+        tableBody.appendChild(row);
+    }
+    updateCharts();
+}
+
+function updateMonthlyStats() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let monthlyStats = {};
+    records.forEach(function(record) {
+        let month = getMonth(record.date);
+        if (!monthlyStats[month]) {
+            monthlyStats[month] = { target: 0, actual: 0 };
+        }
+        monthlyStats[month].target += parseFloat(record.target);
+        monthlyStats[month].actual += parseFloat(record.actual);
+    });
+
+    let tableBody = document.getElementById('monthlyStatsTable');
+    tableBody.innerHTML = '';
+    for (let month in monthlyStats) {
+        let stats = monthlyStats[month];
+        let row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${week}</td>
+            <td>${stats.target}</td>
+            <td>${stats.actual}</td>
+            <td>${stats.target - stats.actual}</td>
+        `;
+
+        tableBody.appendChild(row);
+    }
+    updateCharts();
+}
+
+function getWeek(date) {
+    let d = new Date(date);
+    let start = new Date(d.getFullYear(), 0, 1);
+    let days = Math.floor((d - start) / (1000 * 60 * 60 * 24));
+    return Math.ceil((days + 1) / 7);
+}
+
+function getMonth(date) {
+    return date.split('-')[1];
+}
+
+function updateCharts() {
+    updateViewChart();
+    updateWeeklyChart();
+    updateMonthlyChart();
+}
+
+// View曲线图
+function updateViewChart() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let dates = [];
+    let targets = [];
+    let actuals = [];
+    let differences = [];
+    records.forEach(function(record) {
+        dates.push(record.date);
+        targets.push(parseFloat(record.target));
+        actuals.push(parseFloat(record.actual));
+        differences.push(parseFloat(record.target) - parseFloat(record.actual));
+    });
+
+    var ctx = document.getElementById('viewChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: '目标',
+                data: targets,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }, {
+                label: '已完成',
+                data: actuals,
+                borderColor: 'rgba(54, 162, 235, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }, {
+                label: '差额',
+                data: differences,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }]
+        }
+    });
+}
+
+// Weekly曲线图
+function updateWeeklyChart() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let weeks = [];
+    let targets = [];
+    let actuals = [];
+    let differences = [];
+    records.forEach(function(record) {
+        let week = getWeek(record.date);
+        if (!weeks.includes(week)) {
+            weeks.push(week);
+            targets.push(0);
+            actuals.push(0);
+            differences.push(0);
+        }
+        targets[weeks.indexOf(week)] += parseFloat(record.target);
+        actuals[weeks.indexOf(week)] += parseFloat(record.actual);
+        differences[weeks.indexOf(week)] += parseFloat(record.target) - parseFloat(record.actual);
+    });
+
+    var ctx = document.getElementById('weeklyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: weeks,
+            datasets: [{
+                label: '目标',
+                data: targets,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }, {
+                label: '已完成',
+                data: actuals,
+                borderColor: 'rgba(54, 162, 235, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }, {
+                label: '差额',
+                data: differences,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }]
+        }
+    });
+}
+
+// Monthly曲线图
+function updateMonthlyChart() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let months = [];
+    let targets = [];
+    let actuals = [];
+    let differences = [];
+    records.forEach(function(record) {
+        let month = getMonth(record.date);
+        if (!months.includes(month)) {
+            months.push(month);
+            targets.push(0);
+            actuals.push(0);
+            differences.push(0);
+        }
+        targets[months.indexOf(month)] += parseFloat(record.target);
+        actuals[months.indexOf(month)] += parseFloat(record.actual);
+        differences[months.indexOf(month)] += parseFloat(record.target) - parseFloat(record.actual);
+    });
+
+    var ctx = document.getElementById('monthlyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: '目标',
+                data: targets,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }, {
+                label: '已完成',
+                data: actuals,
+                borderColor: 'rgba(54, 162, 235, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }, {
+                label: '差额',
+                data: differences,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                fill: true  // 设置为 true，变为曲线图
+            }]
+        }
+    });
+}
+
+
+// Monthly折线图
+function updateMonthlyChart() {
+    let records = JSON.parse(localStorage.getItem('performanceRecords') || '[]');
+    let months = [];
+    let targets = [];
+    let actuals = [];
+    let differences = [];
+    records.forEach(function(record) {
+        let month = getMonth(record.date);
+        if (!months.includes(month)) {
+            months.push(month);
+            targets.push(0);
+            actuals.push(0);
+            differences.push(0);
+        }
+        targets[months.indexOf(month)] += parseFloat(record.target);
+        actuals[months.indexOf(month)] += parseFloat(record.actual);
+        differences[months.indexOf(month)] += parseFloat(record.target) - parseFloat(record.actual);
+    });
+
+    var ctx = document.getElementById('monthlyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: '目标',
+                data: targets,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                fill: false
+            }, {
+                label: '已完成',
+                data: actuals,
+                borderColor: 'rgba(54, 162, 235, 1)',
+                fill: false
+            }, {
+                label: '差额',
+                data: differences,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                fill: false
+            }]
+        }
+    });
 }
 </script>
 
